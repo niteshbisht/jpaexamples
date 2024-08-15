@@ -1,5 +1,6 @@
 package com.hbm.jpaexamples.components.insurance;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.scheduling.annotation.Scheduled;
@@ -22,12 +23,12 @@ public class InsuranceDataFeeder {
 	private final InsurancePlanRepository insurancePlanRepository;
 	private final CreditCardInfoRepository creditCardInfoRepository;
 
-	@Scheduled(fixedDelay=20000)
+	@Scheduled(fixedDelay = 30000)
 	public void feedData() {
 		for (int i = 0; i < 10; i++) {
-			 var cardInfo = new CreditCardInfo();
+			var cardInfo = new CreditCardInfo();
 			final var randomUUID = UUID.randomUUID().toString().replace("-", "");
-			cardInfo.setCardNumber(randomUUID.substring(0, randomUUID.length()/2));
+			cardInfo.setCardNumber(randomUUID.substring(0, randomUUID.length() / 2));
 			cardInfo = saveCardData(cardInfo);
 			saveInsurancePlan(cardInfo);
 			var size = insurancePlanRepository.count();
@@ -35,6 +36,13 @@ public class InsuranceDataFeeder {
 		}
 	}
 
+	/**
+	 * Saves the credit card information in the database and returns the updated
+	 * credit card information.
+	 *
+	 * @param cardInfo the credit card information to be saved
+	 * @return the updated credit card information with the generated ID
+	 */
 	@Transactional
 	public CreditCardInfo saveCardData(CreditCardInfo cardInfo) {
 		cardInfo = creditCardInfoRepository.saveAndFlush(cardInfo);
@@ -42,17 +50,45 @@ public class InsuranceDataFeeder {
 		return cardInfo;
 	}
 
+	/**
+	 * Saves an insurance plan for a given credit card information.
+	 *
+	 * @param cardInfo the credit card information for which the insurance plan is
+	 *                 being saved
+	 * @return void
+	 */
 	@Transactional
 	public void saveInsurancePlan(CreditCardInfo cardInfo) {
 		var insurancePlan = new InsurancePlan();
 		insurancePlan.setStatus("DORMANT");
 		final var randomUUIDPlan = UUID.randomUUID().toString().replace("-", "");
-		insurancePlan.setPlanName(randomUUIDPlan.substring(0, randomUUIDPlan.length()/2));
-		insurancePlan=insurancePlanRepository.saveAndFlush(insurancePlan);
+		insurancePlan.setPlanName(randomUUIDPlan.substring(0, randomUUIDPlan.length() / 2));
+		insurancePlan = insurancePlanRepository.saveAndFlush(insurancePlan);
 		cardInfo.setInsurancePlan(insurancePlan);
 		insurancePlan.setCreditCardInfo(cardInfo);
-		insurancePlan=insurancePlanRepository.saveAndFlush(insurancePlan);
+		insurancePlan = insurancePlanRepository.saveAndFlush(insurancePlan);
 		log.info("Saved insurancePlan={} ", insurancePlan.getId());
 	}
 
+	@Scheduled(fixedDelay = 60000)
+	@Transactional
+	public void linkNewCards() {
+		while (true) {
+			List<InsurancePlan> dormantPlans = insurancePlanRepository.findByStatus("DORMANT");
+			if (dormantPlans.isEmpty()) {
+				log.info("Fetched 0 records=> linkNewCards");
+				break;
+			}
+			for (InsurancePlan plan : dormantPlans) {
+				var cardInfo = new CreditCardInfo();
+				final var randomUUID = UUID.randomUUID().toString().replace("-", "");
+				cardInfo.setCardNumber(randomUUID.substring(0, randomUUID.length() / 2));
+				cardInfo = saveCardData(cardInfo);
+				plan.setCreditCardInfo(cardInfo);
+				plan.setStatus("ACTIVE");
+				plan = insurancePlanRepository.save(plan);
+				log.info("Saved planid={} card_id={}", plan.getId(), plan.getCreditCardInfo().getId());
+			}
+		}
+	}
 }
